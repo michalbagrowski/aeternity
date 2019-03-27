@@ -74,10 +74,13 @@ groups() ->
     ].
 
 init_per_group(all, Cfg) ->
-    meck:expect(aec_hard_forks, protocol_effective_at_height,
-                fun(_) -> ?FORTUNA_PROTOCOL_VSN end),
-    [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_2},
-     {protocol, fortuna} | Cfg];
+    case aect_test_utils:latest_protocol_version() of
+        ?ROMA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_roma};
+        ?MINERVA_PROTOCOL_VSN -> {skip, generalized_accounts_not_in_minerva};
+        ?FORTUNA_PROTOCOL_VSN ->
+            [{sophia_version, ?AESOPHIA_2}, {vm_version, ?VM_AEVM_SOPHIA_3},
+             {protocol, fortuna} | Cfg]
+    end;
 %% init_per_group(vm_interaction, Cfg) ->
 %%     Height = 10,
 %%     Fun = fun(H) when H <  Height -> ?ROMA_PROTOCOL_VSN;
@@ -90,9 +93,6 @@ init_per_group(all, Cfg) ->
 init_per_group(_Grp, Cfg) ->
     Cfg.
 
-end_per_group(Grp, Cfg) when Grp =:= all ->
-    meck:unload(aec_hard_forks),
-    Cfg;
 end_per_group(_Grp, Cfg) ->
     Cfg.
 
@@ -662,7 +662,6 @@ basic_auth(GA, Nonce, TxHash, S) ->
     Hash = decode_call_result("basic_auth", "to_sign", ok, Val),
 
     GAPrivKey  = aect_test_utils:priv_key(GA, S),
-    ct:pal("HASH: ~p\n", [Hash]),
     Sign = enacl:sign_detached(hash_lit_to_bin(Hash), GAPrivKey),
 
     {make_calldata("basic_auth", "authorize", [Nonce, to_hex_lit(64, Sign)]), S}.
