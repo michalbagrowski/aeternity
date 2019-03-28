@@ -23,6 +23,7 @@
         , simple_failed_auth/1
         , simple_contract_create/1
         , simple_contract_call/1
+        , simple_re_attach_fail/1
 
         , basic_attach/1
         , basic_spend_from/1
@@ -65,6 +66,7 @@ groups() ->
                    , simple_failed_auth
                    , simple_contract_create
                    , simple_contract_call
+                   , simple_re_attach_fail
                    ]}
     , {basic, [], [ basic_attach
                   , basic_spend_from
@@ -213,6 +215,18 @@ simple_contract_call(_Cfg) ->
 
     ok.
 
+simple_re_attach_fail(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    MinGP = aec_test_utils:min_gas_price(),
+    Acc1 = ?call(new_account, 1000000000 * MinGP),
+    {ok, _} = ?call(attach, Acc1, "simple_auth", "authorize", ["123"]),
+
+    AuthOpts = #{ prep_fun => fun(_) -> simple_auth(["123", "1"]) end },
+    {ok, #{failed_as_expected := true}} =
+        ?call(ga_attach, Acc1, AuthOpts, "simple_auth", "authorize", ["123"]),
+
+    ok.
+
 %%%===================================================================
 %%% Basic GA tests
 %%%===================================================================
@@ -275,9 +289,9 @@ spend(From, To, Amount, Fee, State) ->
 spend(From, To, Amount, Fee, Opts, State) ->
     FromId  = aeser_id:create(account, From),
     ToId    = aeser_id:create(account, To),
-    SpendTx = spend_tx(#{sender_id => FromId, recipient_id => ToId,
-                         amount => Amount, fee => Fee,
-                         nonce => aect_test_utils:next_nonce(From, State) }),
+    SpendTx = aega_test_utils:spend_tx(#{sender_id => FromId, recipient_id => ToId,
+                                         amount => Amount, fee => Fee,
+                                         nonce => aect_test_utils:next_nonce(From, State) }),
     Height  = maps:get(height, Opts, 1),
     PrivKey = aect_test_utils:priv_key(From, State),
     case sign_and_apply_transaction(SpendTx, PrivKey, State, Height) of
@@ -293,12 +307,12 @@ attach(Owner, Contract, AuthFun, Args, Opts, S) ->
         {ok, #{src := Src, bytecode := C, map := #{type_info := TI}}} ->
             Fail  = maps:get(fail, Opts, false),
             Nonce = aect_test_utils:next_nonce(Owner, S),
-            Calldata = make_calldata(Src, "init", Args),
+            Calldata = aega_test_utils:make_calldata(Src, "init", Args),
             {ok, AuthFunHash} = aeso_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
             Options1 = maps:merge(#{nonce => Nonce, code => C,
                                     auth_fun => AuthFunHash, call_data => Calldata},
                                   maps:without([height, return_return_value, return_gas_used, fail], Opts)),
-            AttachTx = ga_attach_tx(Owner, Options1, S),
+            AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
             Height   = maps:get(height, Opts, 1),
             PrivKey  = aect_test_utils:priv_key(Owner, S),
             S1       = case sign_and_apply_transaction(AttachTx, PrivKey, S, Height) of
@@ -321,18 +335,19 @@ ga_spend(From, AuthOpts, To, Amount, Fee, S) ->
     ga_spend(From, AuthOpts, To, Amount, Fee, #{}, S).
 
 ga_spend(From, AuthOpts, To, Amount, Fee, Opts, S) ->
-    InnerSpendTx = spend_tx(#{sender_id    => aeser_id:create(account, From),
-                              recipient_id => aeser_id:create(account, To),
-                              amount       => Amount,
-                              fee          => Fee}),
-    meta(From, AuthOpts, InnerSpendTx, Opts, S).
+    SpendTx = aega_test_utils:spend_tx(#{sender_id    => aeser_id:create(account, From),
+                                         recipient_id => aeser_id:create(account, To),
+                                         amount       => Amount,
+                                         fee          => Fee,
+                                         nonce        => 0}),
+    meta(From, AuthOpts, SpendTx, Opts, S).
 
 ga_create(Owner, AuthOpts, ContractName, InitArgs, S) ->
     ga_create(Owner, AuthOpts, ContractName, InitArgs, #{}, S).
 
 ga_create(Owner, AuthOpts, ContractName, InitArgs, Opts, S) ->
     {ok, #{src := Src, bytecode := Code}} = get_contract(ContractName),
-    CallData = make_calldata(Src, "init", InitArgs),
+    CallData = aega_test_utils:make_calldata(Src, "init", InitArgs),
     Options1 = maps:merge(#{nonce => 0, code => Code, call_data => CallData},
                           maps:without([height], Opts)),
     CreateTx = create_tx(Owner, Options1, S),
@@ -343,19 +358,33 @@ ga_call(Caller, AuthOpts, ContractPK, ContractName, Fun, Args, S) ->
     ga_call(Caller, AuthOpts, ContractPK, ContractName, Fun, Args, #{}, S).
 
 ga_call(Caller, AuthOpts, Contract, ContractName, Fun, Args, Opts, S) ->
-    CallData = make_calldata(ContractName, Fun, Args),
+    CallData = aega_test_utils:make_calldata(ContractName, Fun, Args),
     Options1 = maps:merge(#{nonce => 0, call_data => CallData},
                           maps:without([height], Opts)),
     CallTx   = call_tx(Caller, Contract, Options1, S),
 
     meta(Caller, AuthOpts, CallTx, Opts, S).
 
+ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, S) ->
+    ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, #{}, S).
+
+ga_attach(Owner, AuthOpts, Contract, AuthFun, InitArgs, Opts, S) ->
+    {ok, #{src := Src, bytecode := Code, map := #{type_info := TI}}} = get_contract(Contract),
+    Calldata = aega_test_utils:make_calldata(Src, "init", InitArgs),
+    {ok, AuthFunHash} = aeso_abi:type_hash_from_function_name(list_to_binary(AuthFun), TI),
+    Options1 = maps:merge(#{nonce => 0, code => Code, auth_fun => AuthFunHash,
+                            call_data => Calldata}, maps:without([height], Opts)),
+    AttachTx = aega_test_utils:ga_attach_tx(Owner, Options1),
+    meta(Owner, AuthOpts, AttachTx, Opts, S).
+
+
+
 meta(Owner, AuthOpts, InnerTx, Opts, S) ->
     Fail     = maps:get(fail, Opts, false),
     TxBin    = aec_governance:add_network_id(aetx:serialize_to_binary(InnerTx)),
     AuthData = make_authdata(AuthOpts, aec_hash:hash(tx, TxBin)),
     Options1 = maps:merge(#{auth_data => AuthData, tx => InnerTx}, AuthOpts),
-    MetaTx   = ga_meta_tx(Owner, Options1, S),
+    MetaTx   = aega_test_utils:ga_meta_tx(Owner, Options1),
     SMetaTx  = aetx_sign:new(MetaTx, []),
     Height   = maps:get(height, Opts, 1),
     S1       = case apply_transaction(SMetaTx, S, Height) of
@@ -388,13 +417,22 @@ meta(Owner, AuthOpts, InnerTx, Opts, S) ->
                 InnerCall   = aect_call_state_tree:get_call(ContractKey, CallKey, CallTree),
                 {ok, Res0#{ call_res => aect_call:return_type(InnerCall),
                             call_val => aect_call:return_value(InnerCall),
-                            call_gas => aect_call:gas_used(InnerCall) }}
+                            call_gas => aect_call:gas_used(InnerCall) }};
+            {ga_attach_tx, GTx} ->
+                %% The inner TX should not succeed,
+                {Bal0, _} = account_balance(Owner, S),
+                {Bal1, _} = account_balance(Owner, S1),
+                ?assertMatch({X, Y} when X == Y + AuthCost, {Bal0, Bal1}),
+                {Ct0, _} = account_contract(Owner, S),
+                {Ct1, _} = account_contract(Owner, S1),
+                ?assertEqual(Ct0, Ct1),
+                {ok, Res0#{failed_as_expected => true}}
         end,
     {Res, S1}.
 
 dry_run(ContractPK, Contract, Fun, Args, S) ->
     {DummyAcc, S1} = new_account(10000000 * aec_test_utils:min_gas_price(), S),
-    DryData        = make_calldata(Contract, Fun, Args),
+    DryData        = aega_test_utils:make_calldata(Contract, Fun, Args),
     DryNonce       = aect_test_utils:next_nonce(DummyAcc, S1),
     CallTx         = call_tx(DummyAcc, ContractPK, #{call_data => DryData, nonce => DryNonce}, S1),
     PrivKey        = aect_test_utils:priv_key(DummyAcc, S1),
@@ -407,53 +445,6 @@ dry_run(ContractPK, Contract, Fun, Args, S) ->
 %%%===================================================================
 %%% Transactions
 %%%===================================================================
-spend_tx(Spec0) ->
-    Spec = maps:merge(spend_tx_default(), Spec0),
-    {ok, Tx} = aec_spend_tx:new(Spec),
-    Tx.
-
-spend_tx_default() ->
-    #{sender_id    => aeser_id:create(account, <<0:256>>),
-      recipient_id => aeser_id:create(account, <<0:256>>),
-      amount       => 123456,
-      fee          => 25000 * aec_test_utils:min_gas_price(),
-      nonce        => 0,
-      payload      => <<>>}.
-
-ga_attach_tx(PubKey, Spec0, State) ->
-    Spec = maps:merge(ga_attach_tx_default(PubKey, State), Spec0),
-    {ok, Tx} = aega_attach_tx:new(Spec),
-    Tx.
-
-ga_attach_tx_default(PubKey, State) ->
-    #{ fee         => 1000000 * aec_test_utils:min_gas_price()
-     , owner_id    => aeser_id:create(account, PubKey)
-     , nonce       => try aect_test_utils:next_nonce(PubKey, State) catch _:_ -> 0 end
-     , code        => aect_test_utils:dummy_bytecode()
-     , auth_fun    => <<"NOT A FUNCTION">>
-     , call_data   => <<"NOT ENCODED ACCORDING TO ABI">>
-     , vm_version  => aect_test_utils:latest_sophia_vm_version()
-     , abi_version => aect_test_utils:latest_sophia_abi_version()
-     , gas         => 10000
-     , gas_price   => 1 * aec_test_utils:min_gas_price()
-     , ttl         => 0
-     }.
-
-ga_meta_tx(PubKey, Spec0, State) ->
-    Spec = maps:merge(ga_meta_tx_default(PubKey, State), Spec0),
-    {ok, Tx} = aega_meta_tx:new(Spec),
-    Tx.
-
-ga_meta_tx_default(PubKey, _State) ->
-    #{ fee         => 1000000 * aec_test_utils:min_gas_price()
-     , ga_id       => aeser_id:create(account, PubKey)
-     , auth_data   => <<"NOT ENCODED ACCORDING TO ABI">>
-     , abi_version => aect_test_utils:latest_sophia_abi_version()
-     , gas         => 50000
-     , gas_price   => 1 * aec_test_utils:min_gas_price()
-     , ttl         => 0
-     }.
-
 create_tx(Owner, Spec0, State) ->
     Spec = maps:merge(create_tx_default(), Spec0),
     aect_test_utils:create_tx(Owner, Spec, State).
@@ -611,22 +602,11 @@ sophia_version() ->
         X         -> X
     end.
 
-make_calldata(Name, Fun, Args) when length(Name) < 20 ->
-    {ok, #{src := Src}} = get_contract(Name),
-    make_calldata(Src, Fun, Args);
-make_calldata(Code, Fun, Args) ->
-    {ok, Calldata, _, _} = aeso_compiler:create_calldata(Code, Fun, Args),
-    Calldata.
-
 make_authdata(#{ prep_fun := F }, TxHash) ->
     F(TxHash).
 
-get_contract(Name0) ->
-    Name = filename:join("contracts", Name0),
-    {ok, Serial} = aect_test_utils:compile_contract(sophia_version(), Name),
-    {ok, BinSrc} = aect_test_utils:read_contract(Name),
-    {ok, #{ bytecode => Serial, map => aect_sophia:deserialize(Serial),
-            src => binary_to_list(BinSrc), bin_src => BinSrc }}.
+get_contract(Name) ->
+    aega_test_utils:get_contract(sophia_version(), Name).
 
 decode_call_result(Name0, Fun, Type, Val) ->
     Name = filename:join("contracts", Name0),
@@ -651,7 +631,7 @@ hash_lit_to_bin("#" ++ Hex) ->
     end.
 
 simple_auth(Args) ->
-    make_calldata("simple_auth", "authorize", Args).
+    aega_test_utils:make_calldata("simple_auth", "authorize", Args).
 
 basic_auth(GA, Nonce, TxHash, S) ->
     {GACt, _}  = account_contract(GA, S),
@@ -664,5 +644,5 @@ basic_auth(GA, Nonce, TxHash, S) ->
     GAPrivKey  = aect_test_utils:priv_key(GA, S),
     Sign = enacl:sign_detached(hash_lit_to_bin(Hash), GAPrivKey),
 
-    {make_calldata("basic_auth", "authorize", [Nonce, to_hex_lit(64, Sign)]), S}.
+    {aega_test_utils:make_calldata("basic_auth", "authorize", [Nonce, to_hex_lit(64, Sign)]), S}.
 
