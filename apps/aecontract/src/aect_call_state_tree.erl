@@ -107,6 +107,9 @@ to_list(Tree) ->
                 [{K, aect_call:deserialize(call_id(K), SerCall)} | CallsIn]
         end,
     aeu_mtrees:fold(F, [], iterator(Tree)).
+
+call_id(<<_:?PUB_SIZE/unit:8, CallId/binary>> = _CallTreeId) ->
+    CallId.
 -endif.
 
 %% -- Hashing --
@@ -151,9 +154,6 @@ serialization_template(?VSN) ->
 
 call_tree_id(ContractId, CallId) ->
     <<ContractId/binary, CallId/binary>>.
-
-call_id(<<_:?PUB_SIZE/unit:8, CallId/binary>> = _CallTreeId) ->
-    CallId.
 
 add_call(How, CtId, Call, Tree = #call_tree{ calls = CtTree }) ->
     CallId     = aect_call:id(Call),

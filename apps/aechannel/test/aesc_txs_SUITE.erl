@@ -791,7 +791,7 @@ close_mutual_wrong_amounts(Cfg) ->
     % sum too big
     Test(100000 * aec_test_utils:min_gas_price(),
          100000 * aec_test_utils:min_gas_price(),
-         50000 * aec_test_utils:min_gas_price(), 
+         50000 * aec_test_utils:min_gas_price(),
          wrong_amounts),
     % fee too small
     Test(50 * aec_test_utils:min_gas_price(),
