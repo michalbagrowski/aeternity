@@ -237,7 +237,7 @@ new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount,
              state_hash           = StateHash,
              round                = Round,
              solo_round           = 0,
-             locked_until         = 0, % zero means "not closing" as well
+             locked_until         = 0, % zero means "active" as well
              lock_period          = LockPeriod}.
 
 -spec peers(channel()) -> list(aec_keys:pubkey()).
