@@ -14,7 +14,7 @@
          is_solo_closing/1,
          is_last_state_forced/1,
          locked_until/1,
-         new/9,
+         new/10,
          peers/1,
          serialize/1,
          serialize_for_client/1,
@@ -194,6 +194,8 @@ force_progress(Ch0, StateHash, Round, IAmt, RAmt, Height) ->
 
 -spec is_active(channel()) -> boolean().
 is_active(#channel{locked_until = LockedUntil}) ->
+    %% since we can not close a channel on a block height 0,
+    %% we use this value to denote active
     LockedUntil =:= 0.
 
 -spec is_solo_closed(channel(), aec_blocks:height()) -> boolean().
@@ -219,10 +221,10 @@ is_last_state_forced(#channel{solo_round = SoloRound}) ->
 -spec new(aec_keys:pubkey(), non_neg_integer(),
           aec_keys:pubkey(), non_neg_integer(),
           non_neg_integer(), [aec_keys:pubkey()],
-          aec_hash:hash(), non_neg_integer(),
-          non_neg_integer()) -> channel().
+          aec_hash:hash(),   non_neg_integer(),
+          non_neg_integer(), non_neg_integer()) -> channel().
 new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount,
-    ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce) ->
+    ReserveAmount, DelegatePubkeys, StateHash, LockPeriod, Nonce, Round) ->
     PubKey = pubkey(InitiatorPubKey, Nonce, ResponderPubKey),
     #channel{id                   = aeser_id:create(channel, PubKey),
              initiator_id         = aeser_id:create(account, InitiatorPubKey),
@@ -233,9 +235,9 @@ new(InitiatorPubKey, InitiatorAmount, ResponderPubKey, ResponderAmount,
              channel_reserve      = ReserveAmount,
              delegate_ids         = [aeser_id:create(account, D) || D <- DelegatePubkeys],
              state_hash           = StateHash,
-             round                = 1,
+             round                = Round,
              solo_round           = 0,
-             locked_until         = 0,
+             locked_until         = 0, % zero means "not closing" as well
              lock_period          = LockPeriod}.
 
 -spec peers(channel()) -> list(aec_keys:pubkey()).

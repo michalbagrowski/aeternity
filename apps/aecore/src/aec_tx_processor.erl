@@ -12,7 +12,7 @@
         ]).
 
 %% Simple access tx instructions API
--export([ channel_create_tx_instructions/10
+-export([ channel_create_tx_instructions/11
         , channel_close_mutual_tx_instructions/6
         , channel_deposit_tx_instructions/7
         , channel_settle_tx_instructions/6
@@ -260,11 +260,11 @@ contract_call_from_contract_instructions(CallerPubKey, ContractPubkey, CallData,
 
 -spec channel_create_tx_instructions(
         pubkey(), amount(), pubkey(), amount(), amount(), [pubkey()],
-        hash(), ttl(), fee(), nonce()) -> [op()].
+        hash(), ttl(), fee(), nonce(), non_neg_integer()) -> [op()].
 channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
                                ResponderPubkey, ResponderAmount,
                                ReserveAmount, DelegatePubkeys,
-                               StateHash, LockPeriod, Fee, Nonce) ->
+                               StateHash, LockPeriod, Fee, Nonce, Round) ->
     %% The force is not strictly necessary since this cannot be made
     %% from a contract.
     [ force_inc_account_nonce_op(InitiatorPubkey, Nonce)
@@ -273,7 +273,7 @@ channel_create_tx_instructions(InitiatorPubkey, InitiatorAmount,
     , channel_create_op(InitiatorPubkey, InitiatorAmount,
                         ResponderPubkey, ResponderAmount,
                         ReserveAmount, DelegatePubkeys,
-                        StateHash, LockPeriod, Nonce)
+                        StateHash, LockPeriod, Nonce, Round)
     , tx_event_op({channel, aesc_channels:pubkey(InitiatorPubkey,
                                                  Nonce,
                                                  ResponderPubkey)})
@@ -679,7 +679,7 @@ name_update({OwnerPubkey, NameHash, DeltaTTL, MaxTTL, ClientTTL, Pointers}, S) -
 channel_create_op(InitiatorPubkey, InitiatorAmount,
                   ResponderPubkey, ResponderAmount,
                   ReserveAmount, DelegatePubkeys,
-                  StateHash, LockPeriod, Nonce
+                  StateHash, LockPeriod, Nonce, Round
                  ) when ?IS_HASH(InitiatorPubkey),
                         ?IS_NON_NEG_INTEGER(InitiatorAmount),
                         ?IS_HASH(ResponderPubkey),
@@ -688,24 +688,25 @@ channel_create_op(InitiatorPubkey, InitiatorAmount,
                         is_list(DelegatePubkeys),
                         ?IS_HASH(StateHash),
                         ?IS_NON_NEG_INTEGER(LockPeriod),
-                        ?IS_NON_NEG_INTEGER(Nonce) ->
+                        ?IS_NON_NEG_INTEGER(Nonce),
+                        ?IS_NON_NEG_INTEGER(Round) ->
     true = lists:all(fun(X) -> ?IS_HASH(X) end, DelegatePubkeys),
     {channel_create, {InitiatorPubkey, InitiatorAmount,
                       ResponderPubkey, ResponderAmount,
                       ReserveAmount, DelegatePubkeys,
-                      StateHash, LockPeriod, Nonce}}.
+                      StateHash, LockPeriod, Nonce, Round}}.
 
 channel_create({InitiatorPubkey, InitiatorAmount,
                 ResponderPubkey, ResponderAmount,
                 ReserveAmount, DelegatePubkeys,
-                StateHash, LockPeriod, Nonce}, S) ->
+                StateHash, LockPeriod, Nonce, Round}, S) ->
     assert_channel_reserve_amount(ReserveAmount, InitiatorAmount,
                                   ResponderAmount),
     assert_not_equal(InitiatorPubkey, ResponderPubkey, initiator_is_responder),
     Channel = aesc_channels:new(InitiatorPubkey, InitiatorAmount,
                                 ResponderPubkey, ResponderAmount,
                                 ReserveAmount, DelegatePubkeys,
-                                StateHash, LockPeriod, Nonce),
+                                StateHash, LockPeriod, Nonce, Round),
     ChannelPubkey = aesc_channels:pubkey(Channel),
     assert_not_channel(ChannelPubkey, S),
     cache_put(channel, Channel, S).
