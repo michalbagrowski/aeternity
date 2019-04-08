@@ -492,11 +492,20 @@ bits_and(Arg0, Arg1, Arg2, EngineState) ->
 bits_diff(Arg0, Arg1, Arg2, EngineState) ->
     bin_op(bits_difference, {Arg0, Arg1, Arg2}, EngineState).
 
-address(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+address(Arg0, EngineState) ->
+    Address = ?FATE_ADDRESS(_) = maps:get(current_contract, EngineState),
+    write(Arg0, Address, EngineState).
 
-balance(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+balance(Arg0, EngineState) ->
+    Env = maps:get(env, EngineState),
+    ?FATE_ADDRESS(Pubkey) = maps:get(current_contract, EngineState),
+    {ok, Balance, Env1} = aefa_chain_api:account_balance(Pubkey, Env),
+    write(Arg0, aeb_fate_data:make_integer(Balance), EngineState#{env => Env1}).
 
-origin(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+origin(Arg0, EngineState) ->
+    Env = maps:get(env, EngineState),
+    Address = maps:get(origin, Env),
+    write(Arg0, aeb_fate_data:make_address(Address), EngineState).
 
 caller(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
 

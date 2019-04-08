@@ -40,6 +40,7 @@
         , create_contract_upfront_amount/1
         , create_contract_upfront_deposit/1
         , create_version_too_high/1
+        , fate_environment/1
         , state_tree/1
         , sophia_identity/1
         , sophia_remote_identity/1
@@ -154,6 +155,7 @@ groups() ->
     , {fate_1, [sequence], [ create_contract
                            , sophia_identity
                            , sophia_remote_identity
+                           , fate_environment
                            ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
@@ -4496,4 +4498,23 @@ call_wrong_type(_Cfg) ->
     42        = ?call(call_contract, Acc1, Contract1, remote_id, word, {Contract2, 42}),
     {error, <<"out_of_gas">>} = ?call(call_contract, Acc1, Contract1, remote_wrong_type, word,
                                       {Contract2, <<"hello">>}),
+    ok.
+
+%%%===================================================================
+%%% FATE specific tests
+%%%===================================================================
+
+fate_environment(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc = <<AccInt:256>> = ?call(new_account, 10000000 * aec_test_utils:min_gas_price()),
+    InitialBalance = 4711,
+    Contract = <<ContractInt:256>> = ?call(create_contract, Acc, environment, {},
+                                           #{amount => InitialBalance}),
+    %% TODO: aeb_fate_data:decode/1 should not make addresses as integers
+    ?assertEqual({address, ContractInt},
+                 ?call(call_contract, Acc, Contract, contract_address, word, {})),
+    ?assertEqual({address, AccInt},
+                 ?call(call_contract, Acc, Contract, call_origin, word, {})),
+    ?assertEqual(InitialBalance,
+                 ?call(call_contract, Acc, Contract, contract_balance, word, {})),
     ok.

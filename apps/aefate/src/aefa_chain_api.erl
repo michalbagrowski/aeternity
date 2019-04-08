@@ -7,6 +7,7 @@
 -module(aefa_chain_api).
 
 -export([ contract_fate_code/2
+        , account_balance/2
         ]).
 
 -include_lib("aebytecode/include/aeb_fate_data.hrl").
@@ -49,4 +50,10 @@ contract_fate_code(Pubkey, #{ contracts := ContractCache } = Chain) ->
             try {ok, aeb_fate_asm:bytecode_to_fate_code(ByteCode, []), Chain}
             catch _:_ -> error
             end
+    end.
+
+account_balance(Pubkey, #{ trees := Trees } = Chain) ->
+    case aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees)) of
+        {value, Acc} -> {ok, aec_accounts:balance(Acc), Chain};
+        none         -> error
     end.

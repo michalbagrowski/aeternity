@@ -66,16 +66,16 @@
 %%%===================================================================
 
 -ifdef(TEST).
-run_with_cache(What, Chain, Cache) ->
-    try execute(setup_engine(What, Chain, Cache)) of
+run_with_cache(What, Env, Cache) ->
+    try execute(setup_engine(What, Env, Cache)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, E, ES} -> {error, E, ES}
     end.
 -endif.
 
-run(What, Chain) ->
-    try execute(setup_engine(What, Chain)) of
+run(What, Env) ->
+    try execute(setup_engine(What, Env)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, E, ES} -> {error, E, ES}
@@ -87,7 +87,7 @@ get_trace(#{trace := T}) ->
 return_value(#{accumulator := A}) ->
     A.
 
-tx_env(#{chain := #{tx_env := TxEnv}}) ->
+tx_env(#{env := #{tx_env := TxEnv}}) ->
     TxEnv.
 
 gas(#{gas := Gas}) ->
@@ -98,7 +98,7 @@ logs(#{logs := Logs}) ->
     %% TODO: Logs are not constructed yet
     Logs.
 
-final_trees(#{chain := #{trees := Trees}}) ->
+final_trees(#{env := #{trees := Trees}}) ->
     %% TODO: This should push cached changes to the trees
     Trees.
 
@@ -187,19 +187,19 @@ step([I|Is], EngineState0) ->
 
 %% -----------------------------------------------------------
 
-setup_engine(Spec, Chain) ->
-    setup_engine(Spec, Chain, #{}).
+setup_engine(Spec, Env) ->
+    setup_engine(Spec, Env, #{}).
 
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , call := Call
               , gas := Gas
               },
-             Chain, Cache) ->
+             Env, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Address = aeb_fate_data:make_address(ContractPubkey),
-    ES1 = new_engine_state(Gas, Chain, Cache),
+    ES1 = new_engine_state(Gas, Env, Cache),
     ES2 = set_function(Address, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
@@ -209,14 +209,14 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
 
 
 set_function(?FATE_ADDRESS(Pubkey) = Address, Function,
-             #{ chain := Chain, contracts := Contracts} = ES) ->
+             #{ env := Env, contracts := Contracts} = ES) ->
     {ES2, #{functions := Code}} =
         case maps:get(Address, Contracts, void) of
             void ->
-                case aefa_chain_api:contract_fate_code(Pubkey, Chain) of
-                    {ok, ContractCode, Chain1} ->
+                case aefa_chain_api:contract_fate_code(Pubkey, Env) of
+                    {ok, ContractCode, Env1} ->
                         Cache = maps:put(Pubkey, ContractCode, Contracts),
-                        {ES#{contracts => Cache, chain => Chain1}, ContractCode};
+                        {ES#{contracts => Cache, env => Env1}, ContractCode};
                     error ->
                         abort({trying_to_call_contract, Pubkey}, ES)
                 end;
@@ -467,11 +467,11 @@ store_var(Var, Val, [Env|Envs]) ->
 %% New state
 
 
-new_engine_state(Gas, Chain, Contracts) ->
+new_engine_state(Gas, Env, Contracts) ->
     #{ current_bb => 0
      , bbs => #{}
      , memory => [] %% Stack of environments (name => val)
-     , chain => Chain
+     , env => Env
      , trace => []
      , accumulator => ?FATE_VOID
      , accumulator_stack => []
