@@ -905,7 +905,7 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
                  assert_account_nonce(CallerAccount, Nonce),
                  CallerAccount1 = aec_accounts:set_nonce(CallerAccount, Nonce),
                  account_spend(CallerAccount1, TotalAmount, S1);
-             _Other ->
+             Other when Other == aetx_transaction; Other == aetx_ga ->
                  account_spend(CallerAccount, TotalAmount, S1)
          end,
     {ContractAccount, S3} = get_account(ContractPubkey, S2),
@@ -919,14 +919,14 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
             case Context of
                 aetx_contract ->
                     {return, Call, S5}; %% Return instead of store
-                _Other2 ->
+                Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
                     contract_call_success(Call, GasLimit, S5)
             end;
         Fail when (Fail =:= revert orelse Fail =:= error) ->
             case Context of
                 aetx_contract ->
                     {return, Call, S}; %% Return instead of store
-                _Other2 ->
+                Other2 when Other2 == aetx_transaction; Other2 == aetx_ga ->
                     contract_call_fail(Call, Fee, S)
             end
     end.
@@ -934,11 +934,9 @@ contract_call({CallerPubKey, ContractPubkey, CallData, GasLimit, GasPrice,
 get_call_env_specific(CallerPubKey, GasLimit, GasPrice, Amount, Fee, S) ->
     case aetx_env:context(S#state.tx_env) of
         aetx_contract ->
-            {aeser_id:create(contract, CallerPubKey),
-             Amount};
-        _Other ->
-            {aeser_id:create(account, CallerPubKey),
-             Fee + GasLimit * GasPrice + Amount}
+            {aeser_id:create(contract, CallerPubKey), Amount};
+        Other when Other == aetx_transaction; Other == aetx_ga ->
+            {aeser_id:create(account, CallerPubKey), Fee + GasLimit * GasPrice + Amount}
     end.
 
 %%%-------------------------------------------------------------------
