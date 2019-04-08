@@ -66,8 +66,8 @@
 %%%===================================================================
 
 -ifdef(TEST).
-run_with_cache(What, Env, Cache) ->
-    try execute(setup_engine(What, Env, Cache)) of
+run_with_cache(What, Spec, Cache) ->
+    try execute(setup_engine(What, Spec, Cache)) of
         Res -> {ok, Res}
     catch
         throw:{?MODULE, E, ES} -> {error, E, ES}
@@ -187,19 +187,19 @@ step([I|Is], EngineState0) ->
 
 %% -----------------------------------------------------------
 
-setup_engine(Spec, Env) ->
-    setup_engine(Spec, Env, #{}).
+setup_engine(Spec, State) ->
+    setup_engine(Spec, State, #{}).
 
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , call := Call
               , gas := Gas
               },
-             Env, Cache) ->
+             Spec, Cache) ->
     {tuple, {Function, {tuple, ArgTuple}}} =
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Address = aeb_fate_data:make_address(ContractPubkey),
-    ES1 = new_engine_state(Gas, Env, Cache),
+    ES1 = new_engine_state(Gas, aefa_chain_api:new(Spec), Cache),
     ES2 = set_function(Address, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
@@ -209,14 +209,14 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
 
 
 set_function(?FATE_ADDRESS(Pubkey) = Address, Function,
-             #{ env := Env, contracts := Contracts} = ES) ->
+             #{ chain_api := APIState, contracts := Contracts} = ES) ->
     {ES2, #{functions := Code}} =
         case maps:get(Address, Contracts, void) of
             void ->
-                case aefa_chain_api:contract_fate_code(Pubkey, Env) of
-                    {ok, ContractCode, Env1} ->
+                case aefa_chain_api:contract_fate_code(Pubkey, APIState) of
+                    {ok, ContractCode, APIState1} ->
                         Cache = maps:put(Pubkey, ContractCode, Contracts),
-                        {ES#{contracts => Cache, env => Env1}, ContractCode};
+                        {ES#{contracts => Cache, chain_api => APIState1}, ContractCode};
                     error ->
                         abort({trying_to_call_contract, Pubkey}, ES)
                 end;
@@ -467,11 +467,11 @@ store_var(Var, Val, [Env|Envs]) ->
 %% New state
 
 
-new_engine_state(Gas, Env, Contracts) ->
+new_engine_state(Gas, APIState, Contracts) ->
     #{ current_bb => 0
      , bbs => #{}
      , memory => [] %% Stack of environments (name => val)
-     , env => Env
+     , chain_api => APIState
      , trace => []
      , accumulator => ?FATE_VOID
      , accumulator_stack => []

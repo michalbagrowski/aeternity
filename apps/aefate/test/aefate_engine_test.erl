@@ -52,7 +52,11 @@ bits_test_() ->
 
 make_calls(ListOfCalls) ->
     Cache = setup_contracts(),
-    Chain = #{},
+    %% Dummy values since they should not come into play in this test
+    Chain = #{ trees => aec_trees:new_without_backend()
+             , height => 1
+             , tx_env => aetx_env:tx_env(1)
+             },
     [{lists:flatten(io_lib:format("call(~p,~p,~p)->~p~n~p : ~p",
                                   [C,F,A,R,
                                    aeb_fate_data:encode(A),

@@ -6,6 +6,9 @@
 %%%-------------------------------------------------------------------
 -module(aefa_chain_api).
 
+-export([ new/1
+        ]).
+
 -export([ contract_fate_code/2
         , account_balance/2
         ]).
@@ -23,37 +26,31 @@
 %%% API
 %%% ===================================================================
 
-contract_fate_code(Pubkey, #{ contracts := ContractCache } = Chain) ->
-    case maps:get(Pubkey, ContractCache, none) of
-        none ->
-            CTrees = aec_trees:contracts(maps:get(trees, Chain)),
-            case aect_state_tree:lookup_contract(Pubkey, CTrees, [no_store]) of
-                {value, Contract} ->
-                    case aect_contracts:vm_version(Contract) of
-                        VMV when ?IS_FATE_SOPHIA(VMV) ->
-                            SerCode = aect_contracts:code(Contract),
-                            #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
-                            try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
-                                FateCode ->
-                                    Cache1 = ContractCache#{ Pubkey => ByteCode },
-                                    Chain1 = Chain#{ contracts => Cache1},
-                                    {ok, FateCode, Chain1}
-                            catch _:_ -> error
-                            end;
-                        _ ->
-                            error
+new(#{ trees  := Trees
+     , height := Height
+     , tx_env := TxEnv
+     }) ->
+    aeprimop_state:new(Trees, Height, TxEnv).
+
+contract_fate_code(Pubkey, State) ->
+    case aeprimop_state:find_contract_without_store(Pubkey, State) of
+        none -> error;
+        {value, Contract} ->
+            case aect_contracts:vm_version(Contract) of
+                VMV when ?IS_FATE_SOPHIA(VMV) ->
+                    SerCode = aect_contracts:code(Contract),
+                    #{ byte_code := ByteCode} = aect_sophia:deserialize(SerCode),
+                    try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
+                        FateCode -> {ok, FateCode, State}
+                    catch _:_ -> error
                     end;
-                none ->
+                _ ->
                     error
-            end;
-        ByteCode when is_binary(ByteCode) ->
-            try {ok, aeb_fate_asm:bytecode_to_fate_code(ByteCode, []), Chain}
-            catch _:_ -> error
             end
     end.
 
-account_balance(Pubkey, #{ trees := Trees } = Chain) ->
-    case aec_accounts_trees:lookup(Pubkey, aec_trees:accounts(Trees)) of
-        {value, Acc} -> {ok, aec_accounts:balance(Acc), Chain};
-        none         -> error
+account_balance(Pubkey, State) ->
+    case aeprimop_state:find_account(Pubkey, State) of
+        {Account, State1} -> {ok, aec_accounts:balance(Account), State1};
+        none              -> error
     end.
