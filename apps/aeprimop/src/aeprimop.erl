@@ -5,7 +5,7 @@
 %%%
 %%% @end
 %%%-------------------------------------------------------------------
--module(aec_tx_processor).
+-module(aeprimop).
 
 -export([ eval/3
         , eval_with_return/3
@@ -45,7 +45,7 @@
 -endif.
 
 
--include("../include/aec_hash.hrl").
+-include("../../aecore/include/aec_hash.hrl").
 -include("../../aecontract/include/hard_forks.hrl").
 -include("../../aecontract/include/aecontract.hrl").
 

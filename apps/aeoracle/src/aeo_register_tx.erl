@@ -148,7 +148,7 @@ process(#oracle_register_tx{} = RTx, Trees, Env) ->
         {error, _} = Err -> Err;
         DeltaTTL when is_integer(DeltaTTL) ->
             Instructions =
-                aec_tx_processor:oracle_register_tx_instructions(
+                aeprimop:oracle_register_tx_instructions(
                   account_pubkey(RTx),
                   query_format(RTx),
                   response_format(RTx),
@@ -158,7 +158,7 @@ process(#oracle_register_tx{} = RTx, Trees, Env) ->
                   fee(RTx),
                   nonce(RTx)
                  ),
-            aec_tx_processor:eval(Instructions, Trees, Env)
+            aeprimop:eval(Instructions, Trees, Env)
     end.
 
 serialize(#oracle_register_tx{account_id      = AccountId,

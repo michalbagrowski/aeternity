@@ -158,7 +158,7 @@ process(#oracle_query_tx{} = QTx, Trees, Env) ->
         QTTL ->
             {delta, RTTL} = response_ttl(QTx),
             Instructions =
-                aec_tx_processor:oracle_query_tx_instructions(
+                aeprimop:oracle_query_tx_instructions(
                   oracle_pubkey(QTx),
                   sender_pubkey(QTx),
                   query(QTx),
@@ -167,7 +167,7 @@ process(#oracle_query_tx{} = QTx, Trees, Env) ->
                   RTTL,
                   fee(QTx),
                   nonce(QTx)),
-            aec_tx_processor:eval(Instructions, Trees, Env)
+            aeprimop:eval(Instructions, Trees, Env)
     end.
 
 serialize(#oracle_query_tx{sender_id    = SenderId,
