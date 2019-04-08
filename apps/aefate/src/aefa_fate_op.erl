@@ -496,20 +496,22 @@ address(Arg0, EngineState) ->
     Address = ?FATE_ADDRESS(_) = maps:get(current_contract, EngineState),
     write(Arg0, Address, EngineState).
 
-balance(Arg0, EngineState) ->
-    Env = maps:get(env, EngineState),
+balance(Arg0, #{ chain_api := API} = EngineState) ->
     ?FATE_ADDRESS(Pubkey) = maps:get(current_contract, EngineState),
-    {ok, Balance, Env1} = aefa_chain_api:account_balance(Pubkey, Env),
-    write(Arg0, aeb_fate_data:make_integer(Balance), EngineState#{env => Env1}).
+    {ok, Balance, API1} = aefa_chain_api:account_balance(Pubkey, API),
+    write(Arg0, aeb_fate_data:make_integer(Balance),
+          EngineState#{chain_api => API1}).
 
-origin(Arg0, EngineState) ->
-    Env = maps:get(env, EngineState),
-    Address = maps:get(origin, Env),
-    write(Arg0, aeb_fate_data:make_address(Address), EngineState).
+origin(Arg0, #{ chain_api := API } = EngineState) ->
+    Address = aeb_fate_data:make_address(aefa_chain_api:origin(API)),
+    write(Arg0, Address, EngineState).
 
-caller(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+caller(Arg0, #{ caller := ?FATE_ADDRESS(_) = Address } = EngineState) ->
+    write(Arg0, Address, EngineState).
 
-gasprice(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
+gasprice(Arg0, #{ chain_api := API } = EngineState) ->
+    Price = aeb_fate_data:make_integer(aefa_chain_api:gas_price(API)),
+    write(Arg0, Price, EngineState).
 
 blockhash(_Arg0, _EngineState) -> exit({error, op_not_implemented_yet}).
 

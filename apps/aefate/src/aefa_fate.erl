@@ -87,8 +87,8 @@ get_trace(#{trace := T}) ->
 return_value(#{accumulator := A}) ->
     A.
 
-tx_env(#{env := #{tx_env := TxEnv}}) ->
-    TxEnv.
+tx_env(#{chain_api := API}) ->
+    aefa_chain_api:tx_env(API).
 
 gas(#{gas := Gas}) ->
     %% TODO: The gas is not calculated yet
@@ -98,9 +98,8 @@ logs(#{logs := Logs}) ->
     %% TODO: Logs are not constructed yet
     Logs.
 
-final_trees(#{env := #{trees := Trees}}) ->
-    %% TODO: This should push cached changes to the trees
-    Trees.
+final_trees(#{chain_api := API}) ->
+    aefa_chain_api:final_trees(API).
 
 
 %%%===================================================================
@@ -153,7 +152,10 @@ abort({trying_to_reach_bb, BB}, ES) ->
 abort({trying_to_call_function, Name}, ES) ->
     ?t("Trying to call undefined function: ~p", [Name], ES);
 abort({trying_to_call_contract, Pubkey}, ES) ->
-    ?t("Trying to call invalid contract: ~p", [Pubkey], ES).
+    ?t("Trying to call invalid contract: ~p", [Pubkey], ES);
+abort(bad_byte_code, ES) ->
+    ?t("Bad byte code", [], ES).
+
 
 abort(E) -> throw({add_engine_state, E}).
 
@@ -187,8 +189,16 @@ step([I|Is], EngineState0) ->
 
 %% -----------------------------------------------------------
 
-setup_engine(Spec, State) ->
-    setup_engine(Spec, State, #{}).
+setup_engine(#{ contract := <<_:256>> = ContractPubkey
+              , code := ByteCode} = Spec, State) ->
+    try aeb_fate_asm:bytecode_to_fate_code(ByteCode, []) of
+        Code ->
+            Address = aeb_fate_data:make_address(ContractPubkey),
+            Cache = #{ Address => Code },
+            setup_engine(Spec, State, Cache)
+    catch _:_ ->
+            abort(bad_bytecode, no_state)
+    end.
 
 setup_engine(#{ contract := <<_:256>> = ContractPubkey
               , call := Call
@@ -199,15 +209,16 @@ setup_engine(#{ contract := <<_:256>> = ContractPubkey
         aeb_fate_encoding:deserialize(Call),
     Arguments = tuple_to_list(ArgTuple),
     Address = aeb_fate_data:make_address(ContractPubkey),
-    ES1 = new_engine_state(Gas, aefa_chain_api:new(Spec), Cache),
+    ES1 = new_engine_state(Gas, Spec, aefa_chain_api:new(Spec), Cache),
     ES2 = set_function(Address, Function, ES1),
     ES3 = push_arguments(Arguments, ES2),
     Signature = get_function_signature(Function, ES3),
     {ok, ES4} = check_signature_and_bind_args(Signature, ES3),
-    ES4.
+    ES4#{caller => aeb_fate_data:make_address(maps:get(caller, Spec))}.
 
-
-
+set_function(?FATE_ADDRESS(_) = Address, Function,
+             #{ current_contract := Address } = ES) ->
+    set_current_function(Function, ES);
 set_function(?FATE_ADDRESS(Pubkey) = Address, Function,
              #{ chain_api := APIState, contracts := Contracts} = ES) ->
     {ES2, #{functions := Code}} =
@@ -224,7 +235,8 @@ set_function(?FATE_ADDRESS(Pubkey) = Address, Function,
         end,
     ES3 = ES2#{current_contract => Address},
     ES4 = ES3#{functions => Code},
-    set_current_function(Function, ES4).
+    ES5 = ES4#{caller => maps:get(current_contract, ES)},
+    set_current_function(Function, ES5).
 
 %get_current_contract(#{current_contract := Contract}) ->
 %    Contract.
@@ -467,7 +479,7 @@ store_var(Var, Val, [Env|Envs]) ->
 %% New state
 
 
-new_engine_state(Gas, APIState, Contracts) ->
+new_engine_state(Gas, Spec, APIState, Contracts) ->
     #{ current_bb => 0
      , bbs => #{}
      , memory => [] %% Stack of environments (name => val)
@@ -480,6 +492,7 @@ new_engine_state(Gas, APIState, Contracts) ->
      , current_contract => ?FATE_VOID
      , current_function => ?FATE_VOID
      , call_stack => []
+     , caller => aeb_fate_data:make_address(maps:get(caller, Spec))
      , gas => Gas %% TODO: Not used properly yet
      , logs => [] %% TODO: Not used properly yet
      }.

@@ -40,6 +40,7 @@
         , create_contract_upfront_amount/1
         , create_contract_upfront_deposit/1
         , create_version_too_high/1
+        , fate_call_origin/1
         , fate_environment/1
         , state_tree/1
         , sophia_identity/1
@@ -156,7 +157,8 @@ groups() ->
                            , sophia_identity
                            , sophia_remote_identity
                            , fate_environment
-                           ]}
+                           , fate_call_origin
+                          ]}
     , {protocol_interaction, [], [ sophia_vm_interaction
                                  , create_contract_init_error_no_create_account
                                  ]}
@@ -357,7 +359,8 @@ init_per_testcase(_TC, Config) ->
     case vm_version() of
         ?VM_AEVM_SOPHIA_1 -> ?assertMatch(ExpVm1, Res);
         ?VM_AEVM_SOPHIA_2 -> ?assertMatch(ExpVm2, Res);
-        ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res)
+        ?VM_AEVM_SOPHIA_3 -> ?assertMatch(ExpVm3, Res); %% Should be the same
+        ?VM_FATE_SOPHIA_1 -> ?assertMatch(ExpVm3, Res)  %% where applicable
     end).
 
 -define(assertMatchProtocol(Res, ExpRoma, ExpMinerva),
@@ -1460,7 +1463,6 @@ sophia_call_origin(_Cfg) ->
     RemCInt = ?call(call_contract, Acc, RemC, nested_caller, word, {}),
 
     ok.
-
 
 %% Oracles tests
 
@@ -4517,4 +4519,21 @@ fate_environment(_Cfg) ->
                  ?call(call_contract, Acc, Contract, call_origin, word, {})),
     ?assertEqual(InitialBalance,
                  ?call(call_contract, Acc, Contract, contract_balance, word, {})),
+
+    ok.
+
+fate_call_origin(_Cfg) ->
+    state(aect_test_utils:new_state()),
+    Acc       = ?call(new_account, 10000000000 * aec_test_utils:min_gas_price()),
+    EnvC      = ?call(create_contract, Acc, environment, {}, #{}),
+    RemC      = ?call(create_contract, Acc, environment, {}, #{}),
+
+    <<AccInt:256>> = Acc,
+    <<RemCInt:256>> = RemC,
+
+    {address, AccInt}  = ?call(call_contract, Acc, RemC, call_caller, word, {}),
+    {address, AccInt}  = ?call(call_contract, Acc, RemC, call_origin, word, {}),
+    {address, RemCInt} = ?call(call_contract, Acc, RemC, remote_call_caller, word, {EnvC}),
+    {address, AccInt}  = ?call(call_contract, Acc, RemC, remote_call_origin, word, {EnvC}),
+
     ok.

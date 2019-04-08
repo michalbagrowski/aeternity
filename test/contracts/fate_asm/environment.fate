@@ -19,6 +19,12 @@ FUNCTION call_caller() -> address
   CALLER a
   RETURN
 
+FUNCTION remote_call_caller(address) -> address
+  CALL_TR arg0 call_caller
+
+FUNCTION remote_call_origin(address) -> address
+  CALL_TR arg0 call_origin
+
 ;; Not implemented as instruction yet
 ;; FUNCTION call_value() -> integer
 ;;   VALUE
