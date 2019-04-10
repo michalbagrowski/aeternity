@@ -1175,11 +1175,6 @@ workflows:
             - rebar_lock_check
             - linux_package
             - hodl_artefact_upload
-          filters:
-            branches:
-              ignore: /.*/
-            tags:
-              only: *stable_tag_regex
 
       - upload_packages_osx:
           requires:
