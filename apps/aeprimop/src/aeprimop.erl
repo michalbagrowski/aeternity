@@ -40,7 +40,6 @@
                         , find_name/2
                         , find_oracle/2
                         , find_oracle_query/3
-                        , find_channel/3
                         , get_account/2
                         , get_channel/2
                         , get_commitment/3
@@ -1295,7 +1294,7 @@ assert_contract_call_stack(CallStack, S) ->
     end.
 
 assert_not_channel(ChannelPubkey, S) ->
-    case find_channel(channel, ChannelPubkey, S) of
+    case find_channel(ChannelPubkey, S) of
         none -> ok;
         {value, _} -> runtime_error(channel_exists)
     end.
