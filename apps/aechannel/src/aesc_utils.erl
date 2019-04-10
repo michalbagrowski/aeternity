@@ -147,7 +147,7 @@ unpack_payload(Tx) ->
     case aetx:specialize_type(aetx_sign:tx(Tx)) of
         {channel_offchain_tx, OffChainTx} -> {ok, OffChainTx};
         {ga_meta_tx, GAMetaTx}            -> unpack_payload(aega_meta_tx:tx(GAMetaTx));
-        _                                 -> {error, bad_offchain_state_type}
+        {_, _}                            -> {error, bad_offchain_state_type}
     end.
 
 
